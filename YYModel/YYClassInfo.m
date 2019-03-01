@@ -104,7 +104,8 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
     const char *typeEncoding = ivar_getTypeEncoding(ivar);
     if (typeEncoding) {
         _typeEncoding = [NSString stringWithUTF8String:typeEncoding];
-        _type = YYEncodingGetType(typeEncoding);
+        _type = YYEncodingGetType(typeEncoding);//函数的抽取
+        //通过调用YYEncodingGetType方法传入类型编码获得
     }
     return self;
 }
@@ -112,26 +113,35 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
 @end
 
 @implementation YYClassMethodInfo
-
+/*
+ 该类存储了方法的相关信息，包括方法名、SEL、IMP、方法类型、返回值类型、参数类型数组。
+ */
 - (instancetype)initWithMethod:(Method)method {
     if (!method) return nil;
     self = [super init];
+    // 方法结构体
     _method = method;
+    // SEL
     _sel = method_getName(method);
+    // IMP
     _imp = method_getImplementation(method);
+    // 方法名
     const char *name = sel_getName(_sel);
     if (name) {
         _name = [NSString stringWithUTF8String:name];
     }
+    // 方法的参数和返回类型
     const char *typeEncoding = method_getTypeEncoding(method);
     if (typeEncoding) {
         _typeEncoding = [NSString stringWithUTF8String:typeEncoding];
     }
+    // 方法的返回类型
     char *returnType = method_copyReturnType(method);
     if (returnType) {
         _returnTypeEncoding = [NSString stringWithUTF8String:returnType];
         free(returnType);
     }
+    // 方法的参数
     unsigned int argumentCount = method_getNumberOfArguments(method);
     if (argumentCount > 0) {
         NSMutableArray *argumentTypes = [NSMutableArray new];
@@ -149,6 +159,9 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
 @end
 
 @implementation YYClassPropertyInfo
+/*
+ 该类存储了属性的相关信息，包括属性结构体、属性名、编码类型、成员变量名、遵守的协议等。在类的实现中可以看到objc_property_attribute_t结构体，点到头文件看看它的声明是这样的。
+ */
 
 - (instancetype)initWithProperty:(objc_property_t)property {
     if (!property) return nil;
@@ -159,25 +172,29 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
         _name = [NSString stringWithUTF8String:name];
     }
     
+    //T表示属性的类型；C表示Copy，N表示nonatomic，这两个是属性的修饰符；V表示属性所对应的成员变量。可以看到属性的修饰符通常是没有值的，包括retain，assgin，atomic等。
     YYEncodingType type = 0;
     unsigned int attrCount;
     objc_property_attribute_t *attrs = property_copyAttributeList(property, &attrCount);
     for (unsigned int i = 0; i < attrCount; i++) {
         switch (attrs[i].name[0]) {
-            case 'T': { // Type encoding
+            case 'T': { // Type encoding 属性的类型
                 if (attrs[i].value) {
+                    // 类型编码
                     _typeEncoding = [NSString stringWithUTF8String:attrs[i].value];
                     type = YYEncodingGetType(attrs[i].value);
-                    
+                    // 如果属性类型为对象
                     if ((type & YYEncodingTypeMask) == YYEncodingTypeObject && _typeEncoding.length) {
+                        // 扫描属性类型字符串
                         NSScanner *scanner = [NSScanner scannerWithString:_typeEncoding];
+                        // 找不到 @" 停止本次循环
                         if (![scanner scanString:@"@\"" intoString:NULL]) continue;
-                        
+                        // 属性的类
                         NSString *clsName = nil;
                         if ([scanner scanUpToCharactersFromSet: [NSCharacterSet characterSetWithCharactersInString:@"\"<"] intoString:&clsName]) {
                             if (clsName.length) _cls = objc_getClass(clsName.UTF8String);
                         }
-                        
+                        // 属性所遵守的协议，属性可遵守多个协议，
                         NSMutableArray *protocols = nil;
                         while ([scanner scanString:@"<" intoString:NULL]) {
                             NSString* protocol = nil;
@@ -193,21 +210,21 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
                     }
                 }
             } break;
-            case 'V': { // Instance variable
+            case 'V': { // Instance variable 属性所对应的成员变量
                 if (attrs[i].value) {
                     _ivarName = [NSString stringWithUTF8String:attrs[i].value];
                 }
             } break;
-            case 'R': {
+            case 'R': {//Readonly
                 type |= YYEncodingTypePropertyReadonly;
             } break;
-            case 'C': {
+            case 'C': {//Copy
                 type |= YYEncodingTypePropertyCopy;
             } break;
-            case '&': {
+            case '&': {//retain
                 type |= YYEncodingTypePropertyRetain;
             } break;
-            case 'N': {
+            case 'N': {//nonatomic
                 type |= YYEncodingTypePropertyNonatomic;
             } break;
             case 'D': {
@@ -216,13 +233,13 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
             case 'W': {
                 type |= YYEncodingTypePropertyWeak;
             } break;
-            case 'G': {
+            case 'G': {//getter
                 type |= YYEncodingTypePropertyCustomGetter;
                 if (attrs[i].value) {
                     _getter = NSSelectorFromString([NSString stringWithUTF8String:attrs[i].value]);
                 }
             } break;
-            case 'S': {
+            case 'S': {//setter
                 type |= YYEncodingTypePropertyCustomSetter;
                 if (attrs[i].value) {
                     _setter = NSSelectorFromString([NSString stringWithUTF8String:attrs[i].value]);
@@ -249,7 +266,7 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
 }
 
 @end
-
+//类的信息，其实就是上边三个类的一个集合加上一些其他的信息组成。
 @implementation YYClassInfo {
     BOOL _needUpdate;
 }
@@ -257,15 +274,21 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
 - (instancetype)initWithClass:(Class)cls {
     if (!cls) return nil;
     self = [super init];
+    // 类
     _cls = cls;
+    // 父类
     _superCls = class_getSuperclass(cls);
+    // 是否元类
     _isMeta = class_isMetaClass(cls);
     if (!_isMeta) {
+        // 元类
         _metaCls = objc_getMetaClass(class_getName(cls));
     }
+    // 类名
     _name = NSStringFromClass(cls);
+    // 获取本类信息
     [self _update];
-
+    // 父类信息
     _superClassInfo = [self.class classInfoWithClass:_superCls];
     return self;
 }
@@ -328,20 +351,26 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
 
 + (instancetype)classInfoWithClass:(Class)cls {
     if (!cls) return nil;
+    // 类信息缓存，Class为key，YYClassInfo为value
     static CFMutableDictionaryRef classCache;
+    // 元类信息缓存，Class为key，YYClassInfo为value
     static CFMutableDictionaryRef metaCache;
     static dispatch_once_t onceToken;
+    // 信息量
     static dispatch_semaphore_t lock;
     dispatch_once(&onceToken, ^{
         classCache = CFDictionaryCreateMutable(CFAllocatorGetDefault(), 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         metaCache = CFDictionaryCreateMutable(CFAllocatorGetDefault(), 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         lock = dispatch_semaphore_create(1);
     });
+    // 等待信号
     dispatch_semaphore_wait(lock, DISPATCH_TIME_FOREVER);
     YYClassInfo *info = CFDictionaryGetValue(class_isMetaClass(cls) ? metaCache : classCache, (__bridge const void *)(cls));
+    // info存在且需要更新
     if (info && info->_needUpdate) {
         [info _update];
     }
+    // 发送信号
     dispatch_semaphore_signal(lock);
     if (!info) {
         info = [[YYClassInfo alloc] initWithClass:cls];
@@ -358,5 +387,9 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding) {
     Class cls = NSClassFromString(className);
     return [self classInfoWithClass:cls];
 }
+
+/*
+ 类信息和元类信息都做了缓存字典，key为Class，value为YYClassInfo；+ (instancetype)classInfoWithClass:(Class)cls内部做了信号量处理，为线程安全的；当类的内部结构变化后，例如使用class_addMethod()添加一个方法，你需要调用setNeedUpdate()，在needUpdate返回YES之后重新调用``+ (instancetype)classInfoWithClass:(Class)cls`来获取类的最新信息。
+ */
 
 @end

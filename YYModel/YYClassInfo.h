@@ -16,6 +16,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  Type encoding's type.
+ 该类比较简单，主要使用runtime来获取类的属性、成员变量、方法的相关信息。
+ YYClassInfo一共包含有四个类
+ YYClassIvarInfo：类成员变量相关信息；
+ YYClassMethodInfo：类方法相关信息；
+ YYClassPropertyInfo：类属性相关信息；
+ YYClassInfo：类相关信息，由上边三个类加一些其他信息组成；
  */
 typedef NS_OPTIONS(NSUInteger, YYEncodingType) {
     YYEncodingTypeMask       = 0xFF, ///< mask of type value
@@ -78,6 +84,7 @@ YYEncodingType YYEncodingGetType(const char *typeEncoding);
 
 /**
  Instance variable information.
+ 从类名可以看出该类存储了类成员变量的相关信息，该类由五条只读属性和一个实例化方法构成。
  */
 @interface YYClassIvarInfo : NSObject
 @property (nonatomic, assign, readonly) Ivar ivar;              ///< ivar opaque struct
