@@ -7,7 +7,7 @@
 //
 //  This source code is licensed under the MIT-style license found in the
 //  LICENSE file in the root directory of this source tree.
-//
+// 从头文件可以看该类由三个Category和一个Protocol所组成，其主要的实现集中在NSObject的Category中。
 
 #import <Foundation/Foundation.h>
 
